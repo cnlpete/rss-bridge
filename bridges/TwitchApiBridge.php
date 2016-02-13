@@ -1,27 +1,71 @@
 <?php
-/**
-* RssBridgeTwitchApi
-* Returns the newest broadcasts or highlights. Be aware that Twitch deletes broadcasts after
-* 14 days: http://blog.twitch.tv/2014/08/important-reminder-past-broadcasts-removed-today/
-*
-* @name Twitch API Bridge
-* @homepage http://www.twitch.tv
-* @description Returns the newest broadcasts or highlights by channel name using the Twitch API (v3)
-* @maintainer logmanoriginal
-* @update 2015-07-14
-* @use1(text|channel="Channel", list|broadcasts="Show broadcasts=>true;Don't show broadcasts=>false")
-* @use2(text|channel="Channel", text|limit="Limit", list|broadcasts="Show broadcasts=>true;Don't show broadcasts=>false")
-*
-* Description for the API is available on GitHub: https://github.com/justintv/twitch-api
-*/
-
-define(TWITCH_LIMIT, 10); // The default limit
-define(TWITCH_BROADCASTS, 'false'); // The default flag for broadcasts
+define('TWITCH_LIMIT', 10); // The default limit
+define('TWITCH_BROADCASTS', 'false'); // The default flag for broadcasts
 
 class TwitchApiBridge extends BridgeAbstract{
-    
+
 	// for use in the getName function!
 	private $channel;
+
+	public function loadMetadatas() {
+
+		$this->maintainer = "logmanoriginal";
+		$this->name = "Twitch API Bridge";
+		$this->uri = "http://www.twitch.tv";
+		$this->description = "Returns the newest broadcasts or highlights by channel name using the Twitch API (v3)";
+		$this->update = "2016-01-09";
+
+		$this->parameters["Get channel without limit"] =
+		'[
+			{
+				"name" : "Channel",
+				"identifier" : "channel"
+			},
+			{
+				"name" : "Broadcasts",
+				"identifier" : "broadcasts",
+				"type" : "list",
+				"values" : [
+					{
+						"name" : "Show broadcasts",
+						"value" : "true"
+					},
+					{
+						"name" : "Show highlights",
+						"value" : "false"
+					}
+				]
+			}
+		]';
+		$this->parameters["Get channel with limit"] =
+		'[
+			{
+				"name" : "Channel",
+				"identifier" : "channel"
+			},
+			{
+				"name" : "Limit",
+				"identifier" : "limit",
+				"type" : "number"
+			},
+			{
+				"name" : "Broadcasts",
+				"identifier" : "broadcasts",
+				"type" : "list",
+				"values" : [
+					{
+						"name" : "Show broadcasts",
+						"value" : "true"
+					},
+					{
+						"name" : "Show highlights",
+						"value" : "false"
+					}
+				]
+			}
+		]';
+
+	}
     
 	public function collectData(array $param){
 

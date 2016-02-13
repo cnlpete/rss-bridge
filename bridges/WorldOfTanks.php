@@ -1,17 +1,65 @@
 <?php
-/**
-*
-* @name World of Tanks 
-* @description News about the tank slaughter game.
-* @update 2015-09-12
-* @use1(list|lang="Français=>fr;English=>en;Español=>es;Deutsch=>de;Čeština=>cs;Polski=>pl;Türkçe=>tr",text|category="Category id")
-*/
 define('WORLD_OF_TANKS', 'http://worldoftanks.eu/');
 define('NEWS', '/news/');
 class WorldOfTanks extends HttpCachingBridgeAbstract{
+
     private $lang = "fr";
-    private $uri = WORLD_OF_TANKS;
-    private $name = 'World of tanks news';
+    public $uri = WORLD_OF_TANKS;
+
+	public function loadMetadatas() {
+
+		$this->maintainer = "mitsukarenai";
+		$this->name = "World of Tanks";
+		$this->uri = "http://worldoftanks.eu/";
+		$this->description = "News about the tank slaughter game.";
+		$this->update = "2015-09-12";
+
+		$this->parameters[] =
+		'[
+			{
+				"name" : "ID de la catégorie",
+				"type" : "number",
+				"identifier" : "category"
+			},
+			{
+				"name" : "Langue",
+				"identifier" : "lang",
+				"type" : "list",
+				"values" : [
+					{
+						"name" : "Français",
+						"value" : "fr"
+					},
+					{
+						"name" : "English",
+						"value" : "en"
+					},
+					{
+						"name" : "Español",
+						"value" : "es"
+					},
+					{
+						"name" : "Deutsch",
+						"value" : "de"
+					},
+					{
+						"name" : "Čeština",
+						"value" : "cs"
+					},
+					{
+						"name" : "Polski",
+						"value" : "pl"
+					},
+					{
+						"name" : "Türkçe",
+						"value" : "tr"
+					}
+				]
+
+			}
+		]';
+	}
+
 
     public function collectData(array $param){
         if (!empty($param['lang'])) {
@@ -38,7 +86,7 @@ class WorldOfTanks extends HttpCachingBridgeAbstract{
 //        $this->message("loading page ".$item->uri);
         $articlePage = str_get_html($this->get_cached($item->uri));
         $content = $articlePage->find('.l-content', 0);
-        $this->defaultImageSrcTo($content, WORLD_OF_TANKS);
+        HTMLSanitizer::defaultImageSrcTo($content, WORLD_OF_TANKS);
         $item->title = $content->find('h1', 0)->innertext;
         $item->content = $content->find('.b-content', 0)->innertext;
 //        $item->name = $auteur->innertext;

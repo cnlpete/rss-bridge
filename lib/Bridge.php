@@ -6,14 +6,30 @@
 
 interface BridgeInterface{
     public function collectData(array $param);
+    public function getCacheDuration();
+    public function loadMetadatas();
     public function getName();
     public function getURI();
-    public function getCacheDuration();
 }
 
 abstract class BridgeAbstract implements BridgeInterface{
+
     protected $cache;
     protected $items = array();
+
+	public $name = "Unnamed bridge";
+	public $uri = "";
+	public $description = 'No description provided';
+	public $maintainer = 'No maintainer';
+	public $parameters = array();
+
+	/**
+	* Loads the Bridge Metadatas
+	*/
+	public function loadMetadatas() {
+
+
+	}
 
     /**
     * Launch probative exception
@@ -23,16 +39,18 @@ abstract class BridgeAbstract implements BridgeInterface{
     }
 
     /**
-    * Return datas store in the bridge
+    * Return datas stored in the bridge
     * @return mixed
     */
     public function getDatas(){
         return $this->items;
     }
 
+
+
     /**
     * Defined datas with parameters depending choose bridge
-    * Note : you can defined a cache before with "setCache"
+    * Note : you can define a cache before with "setCache"
     * @param array $param $_REQUEST, $_GET, $_POST, or array with bridge expected paramters
     */
     public function setDatas(array $param){
@@ -72,16 +90,6 @@ abstract class BridgeAbstract implements BridgeInterface{
         return $this;
     }
 
-    /**
-     * Set default image SRC attribute to point on given server when none is provided (that's to say when image src starts with '/'
-     */
-    public function defaultImageSrcTo($content, $server) {
-        foreach($content->find('img') as $image) {
-            if(strpos($image->src, '/')==0) {
-                $image->src = $server.$image->src;
-            }
-        }
-    }
 }
 
 /**
@@ -191,6 +199,19 @@ class Bridge{
         throw new \LogicException('Please use ' . __CLASS__ . '::create for new object.');
     }
 
+	/**
+	* Checks if a bridge is an instantiable bridge.
+	* @param string $nameBridge name of the bridge that you want to use
+	* @return true if it is an instantiable bridge, false otherwise.
+	*/
+	static public function isInstantiable($nameBridge) {
+
+		$re = new ReflectionClass($nameBridge);
+		return $re->IsInstantiable();
+
+	}
+
+
     /**
     * Create a new bridge object
     * @param string $nameBridge Defined bridge name you want use
@@ -209,7 +230,11 @@ class Bridge{
 
         require_once $pathBridge;
 
-        return new $nameBridge();
+		if(Bridge::isInstantiable($nameBridge)) {
+        	return new $nameBridge();
+        } else {
+        	return FALSE;
+        }
     }
 
     static public function setDir($dirBridge){
@@ -239,74 +264,109 @@ class Bridge{
     }
 
     /**
-    * Read bridge dir and catch informations about each bridge depending annotation
-    * @return array Informations about each bridge
+    * Lists the available bridges.
+    * @return array List of the bridges
     */
-    static public function searchInformation(){
-        $pathDirBridge = self::getDir();
+	static public function listBridges() {
 
-        $listBridge = array();
+		$pathDirBridge = self::getDir();
+		$listBridge = array();
+		$dirFiles = scandir($pathDirBridge);
 
-        $searchCommonPattern = array('maintainer', 'description', 'homepage', 'name');
+		if( $dirFiles !== false ){
 
-        $dirFiles = scandir($pathDirBridge);
-        if( $dirFiles !== false ){
-            foreach( $dirFiles as $fileName ){
-                if( preg_match('@([^.]+)\.php@U', $fileName, $out) ){ // Is PHP file ?
-                    $infos = array(); // Information about the bridge
-                    $resParse = token_get_all(file_get_contents($pathDirBridge . $fileName)); // Parse PHP file
-                    foreach($resParse as $v){
-                        if( is_array($v) && $v[0] == T_DOC_COMMENT ){ // Lexer node is COMMENT ?
-                            $commentary = $v[1];
-                            foreach( $searchCommonPattern as $name){ // Catch information with common pattern
-                                preg_match('#@' . preg_quote($name, '#') . '\s+(.+)#', $commentary, $outComment);
-                                if( isset($outComment[1]) ){
-                                    $infos[$name] = $outComment[1];
-                                }
-                            }
+		    foreach( $dirFiles as $fileName ) {
+		        if( preg_match('@([^.]+)\.php$@U', $fileName, $out) ){
+						$listBridge[] = $out[1];
+			}
+			}
+		}
 
-                            preg_match_all('#@use(?<num>[1-9][0-9]*)\s?\((?<args>.+)\)(?:\r|\n)#', $commentary, $outComment); // Catch specific information about "use".
+		return $listBridge;
+	}
+	static function isWhitelisted( $whitelist, $name ) {
+	if(in_array("$name", $whitelist) or in_array("$name.php", $whitelist))
+		return TRUE;
+	else
+		return FALSE;
+	}
 
-                            if( isset($outComment['args']) && is_array($outComment['args']) ){
-                                $infos['use'] = array();
-								
-                                foreach($outComment['args'] as $num => $args){ // Each use
-									
-                                    preg_match_all('#(?<type>[a-z]+)\|(?<name>[a-z]+)="(?<value>.*)"(?:,|$)#U', $args, $outArg); // Catch arguments for current use
-									
-									if(!isset($outArg['name']) || count($outArg['name']) == 0) {
-                                    	preg_match_all('#(?<name>[a-z]+)="(?<value>.*)"(?:,|$)#U', $args, $outArg); // Catch arguments
-									}
+}
 
+abstract class RssExpander extends HttpCachingBridgeAbstract{
 
-                                    if( isset($outArg['name'])){
-                                        $usePos = $outComment['num'][$num]; // Current use name
-                                        if( !isset($infos['use'][$usePos]) ){ // Not information actually for this "use" ?
-                                            $infos['use'][$usePos] = array();
-                                        }
-										
-                                        foreach($outArg['name'] as $numArg => $name){ // Each arguments
-                                            $infos['use'][$usePos][$name] = array();
+    public $name;
+    public $uri;
+    public $description;
 
-											$infos['use'][$usePos][$name]['query-name'] = $name;
-											$infos['use'][$usePos][$name]['value'] = $outArg['value'][$numArg];
-											$infos['use'][$usePos][$name]['type'] = $outArg['type'][$numArg];
-
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if( isset($infos['name']) ){ // If informations containt at least a name
-                        $listBridge[$out[1]] = $infos;
-                    }
-                }
-            }
+    public function collectExpandableDatas(array $param, $name){
+        if (empty($name)) {
+            $this->returnError('There is no $name for this RSS expander', 404);
         }
+//       $this->message("Loading from ".$param['url']);
+        // Notice WE DO NOT use cache here on purpose : we want a fresh view of the RSS stream each time
+        $rssContent = simplexml_load_file($name) or $this->returnError('Could not request '.$name, 404);
+//        $this->message("loaded RSS from ".$param['url']);
+        // TODO insert RSS format detection
+        // we suppose for now, we have some RSS 2.0
+        $this->collect_RSS_2_0_data($rssContent);
+    }
 
-        return $listBridge;
+    protected function collect_RSS_2_0_data($rssContent) {
+        $rssContent = $rssContent->channel[0];
+//        $this->message("RSS content is ===========\n".var_export($rssContent, true)."===========");
+        $this->load_RSS_2_0_feed_data($rssContent);
+        foreach($rssContent->item as $item) {
+//            $this->message("parsing item ".var_export($item, true));
+            $this->items[] = $this->parseRSSItem($item);
+        }
+    }
+
+    protected function RSS_2_0_time_to_timestamp($item)  {
+        return DateTime::createFromFormat('D, d M Y H:i:s e', $item->pubDate)->getTimestamp();
+    }
+
+    // TODO set title, link, description, language, and so on
+    protected function load_RSS_2_0_feed_data($rssContent) {
+        $this->name = trim($rssContent->title);
+        $this->uri = trim($rssContent->link);
+        $this->description = trim($rssContent->description);
+    }
+
+    /**
+     * Method should return, from a source RSS item given by lastRSS, one of our Items objects
+     * @param $item the input rss item
+     * @return a RSS-Bridge Item, with (hopefully) the whole content)
+     */
+    abstract protected function parseRSSItem($item);
+
+
+    public function getName(){
+        return $this->name;
+    }
+
+    public function getURI(){
+        return $this->uri;
+    }
+
+    public function getDescription() {
+        return $this->description;
     }
 }
 
+function advanced_file_get_contents($url) {
+
+	if(defined('PROXY_URL')) {
+		$context = array(
+			'http' => array(
+				'proxy' => PROXY_URL,
+				'request_fulluri' => true,
+			),
+		);
+		$context = stream_context_create($context);
+		return file_get_contents($url, false, $context);
+	} else {
+		return file_get_contents($url);
+	}
+
+}

@@ -1,18 +1,47 @@
 <?php
-/**
- * AnimeUltimeBridge
- * Returns 10 newest releases posted on Anime-Ultime
- *
- * @name Anime-Ultime
- * @homepage http://www.anime-ultime.net/
- * @description Returns the 10 newest releases posted on Anime-Ultime
- * @maintainer ORelio
- * @update 2015-10-30
- * @use1(list|type="everything=>;Anime=>A;Drama=>D;Tokusatsu=>T")
- */
 class AnimeUltimeBridge extends BridgeAbstract {
 
     private $filter = 'Releases';
+
+    public function loadMetadatas() {
+
+        $this->maintainer = 'ORelio';
+        $this->name = 'Anime-Ultime';
+        $this->uri = 'http://www.anime-ultime.net/';
+        $this->description = 'Returns the 10 newest releases posted on Anime-Ultime';
+        $this->update = '2015-10-30';
+
+        $this->parameters[] =
+        '[
+            {
+                "name" : "Type",
+                "type" : "list",
+                "identifier" : "type",
+                "values" :
+                [
+                    {
+                        "name" : "Everything",
+                        "value" : ""
+
+                    },
+                    {
+                        "name" : "Anime",
+                        "value" : "A"
+
+                    },
+                    {
+                        "name" : "Drama",
+                        "value" : "D"
+                    },
+                    {
+                        "name" : "Tokusatsu",
+                        "value" : "T"
+
+                    }
+                ]
+            }
+        ]';
+    }
 
     public function collectData(array $param) {
 

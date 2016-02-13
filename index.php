@@ -1,7 +1,6 @@
 <?php
 /*
 TODO :
-- manage SSL detection because if library isn't loaded, some bridge crash !
 - factorize the annotation system
 - factorize to adapter : Format, Bridge, Cache (actually code is almost the same)
 - implement annotation cache for entrance page
@@ -11,9 +10,13 @@ TODO :
 - implement header('X-Cached-Version: '.date(DATE_ATOM, filemtime($cachefile)));
 */
 
+//define('PROXY_URL', 'tcp://192.168.0.0:28');
+
 date_default_timezone_set('UTC');
 error_reporting(0);
 //ini_set('display_errors','1'); error_reporting(E_ALL);  // For debugging only.
+
+require_once __DIR__ . '/lib/RssBridge.php';
 
 // extensions check
 if (!extension_loaded('openssl'))
@@ -21,7 +24,6 @@ if (!extension_loaded('openssl'))
 
 // FIXME : beta test UA spoofing, please report any blacklisting by PHP-fopen-unfriendly websites
 ini_set('user_agent', 'Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20121202 Firefox/30.0 (rss-bridge/0.1; +https://github.com/sebsauvage/rss-bridge)');
-// -------
 
 // default whitelist
 $whitelist_file = './whitelist.txt';
@@ -52,18 +54,13 @@ if (!file_exists($whitelist_file)) {
 }
 else {
 	$whitelist_selection = explode("\n", file_get_contents($whitelist_file));
+	//Remove the last empty line.
+	array_pop($whitelist_selection);
 }
 
-// whitelist control function
-function BridgeWhitelist( $whitelist, $name ) {
-	if(in_array("$name", $whitelist) or in_array("$name.php", $whitelist))
-		return TRUE;
-	else
-		return FALSE;
-}
+Cache::purge();
 
 try{
-    require_once __DIR__ . '/lib/RssBridge.php';
 
     Bridge::setDir(__DIR__ . '/bridges/');
     Format::setDir(__DIR__ . '/formats/');
@@ -80,7 +77,7 @@ try{
                     unset($_REQUEST['format']);
 
 			// whitelist control
-			if(!BridgeWhitelist($whitelist_selection, $bridge)) {
+			if(!Bridge::isWhitelisted($whitelist_selection, $bridge)) {
 				throw new \HttpException('This bridge is not whitelisted', 401);
 				die; 
 			}
@@ -94,16 +91,22 @@ try{
                         $bridge->setCache($cache); // just add disable cache to your query to disable caching
                     }
                     $bridge->setDatas($_REQUEST);
-
+					$bridge->loadMetadatas();
                     // Data transformation
-                    $format = Format::create($format);
-                    $format
-                        ->setDatas($bridge->getDatas())
-                        ->setExtraInfos(array(
-                            'name' => $bridge->getName(),
-                            'uri' => $bridge->getURI(),
-                        ))
-                        ->display();
+                    try {
+		                $format = Format::create($format);
+		                $format
+		                    ->setDatas($bridge->getDatas())
+		                    ->setExtraInfos(array(
+		                        'name' => $bridge->getName(),
+		                        'uri' => $bridge->getURI(),
+		                    ))
+		                    ->display();
+		            } catch(Exception $e) {
+
+						echo "The brige has crashed. You should report this to the bridges maintainer";
+
+		            }
                     die;
                 }
                 break;
@@ -119,102 +122,8 @@ catch(\Exception $e){
     die($e->getMessage());
 }
 
-function getHelperButtonFormat($value, $name){
-    return '<button type="submit" name="format" value="' . $value . '">' . $name . '</button>';
-}
-
-function getHelperButtonsFormat($formats){
-	$buttons = '';
-		foreach( $formats as $name => $infos )
-		{
-			if ( isset($infos['name']) )
-			{
-				$buttons .= getHelperButtonFormat($name, $infos['name']) . PHP_EOL;
-			}
-		}
-	return $buttons;
-}
-
-function displayBridgeCard($bridgeReference, $bridgeInformations, $formats, $isActive = true)
-{
-	$name = isset($bridgeInformations['homepage']) ? '<a href="'.$bridgeInformations['homepage'].'">'.$bridgeInformations['name'].'</a>' : $bridgeInformations['name'];
-	$description = isset($bridgeInformations['description']) ? $bridgeInformations['description'] : 'No description provided';
-	$card = <<<CARD
-	<section id="bridge-{$bridgeReference}" data-ref="{$bridgeReference}">
-		<h2>{$name}</h2>
-		<p class="description">
-			{$description}
-		</p>
-CARD;
-		if( isset($bridgeInformations['use']) && count($bridgeInformations['use']) > 0 )
-		{
-			$card .= '<ol class="list-use">' . PHP_EOL;
-			foreach($bridgeInformations['use'] as $anUseNum => $anUse)
-			{
-				$card .= '<li data-use="' . $anUseNum . '">' . PHP_EOL;
-				$card .= '<form method="GET" action="?">
-							<input type="hidden" name="action" value="display" />
-							<input type="hidden" name="bridge" value="' . $bridgeReference . '" />' . PHP_EOL;
-
-				foreach($anUse as $argValue)
-				{
-					$idArg = 'arg-' . $bridgeReference . '-' . $anUseNum . '-' . $argValue['query-name'];
-					if($argValue['type'] == null || $argValue['type'] == "text") { //If we have no type, treat it as a text field for compatibility
-						$card .= '<input id="' . $idArg . '" type="text" value="" placeholder="' . $argValue['value'] . '" name="' . $argValue['query-name'] . '" />' . PHP_EOL;
-					} else if($argValue['type'] == "list") {
-						$card .= '<select id="' . $idArg . '" name="' . $argValue['query-name'] . '" >' . PHP_EOL;
-						$optionList = explode(";", $argValue['value']);
-						
-						foreach($optionList as $option) {
-							$option = explode("=>", $option);
-							$card .= "<option value='".$option[1]."'>".$option[0]."</option>";
-						}
-						$card .= "</select>";
-					}
-
-				}
-
-				$card .= '<br />';
-
-				if ($isActive)
-				{
-					$card .= getHelperButtonsFormat($formats);
-				}
-				else
-				{
-					$card .= '<span style="font-weight: bold;">Inactive</span>';
-				}
-
-				$card .= '</form></li>' . PHP_EOL;
-			}
-			$card .= '</ol>' . PHP_EOL;
-		}
-		else
-		{
-			$card .= '<form method="GET" action="?">
-				<input type="hidden" name="action" value="display" />
-				<input type="hidden" name="bridge" value="' . $bridgeReference . '" />' . PHP_EOL;
-
-			if ($isActive)
-			{
-				$card .= getHelperButtonsFormat($formats);
-			}
-			else
-			{
-				$card .= '<span style="font-weight: bold;">Inactive</span>';
-			}
-			$card .= '</form>' . PHP_EOL;
-		}
-
-
-	$card .= isset($bridgeInformations['maintainer']) ? '<span class="maintainer">'.$bridgeInformations['maintainer'].'</span>' : '';
-	$card .= '</section>';
-
-	return $card;
-}
-
-$bridges = Bridge::searchInformation();
 $formats = Format::searchInformation();
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -224,9 +133,6 @@ $formats = Format::searchInformation();
     <meta name="description" content="Rss-bridge" />
     <title>RSS-Bridge</title>
     <link href="css/style.css" rel="stylesheet">
-    <!--[if IE]>
-        <script src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-    <![endif]-->
 </head>
 
 <body>
@@ -239,24 +145,25 @@ $formats = Format::searchInformation();
 	    $activeFoundBridgeCount = 0;
 		$showInactive = isset($_REQUEST['show_inactive']) && $_REQUEST['show_inactive'] == 1;
 		$inactiveBridges = '';
-	    foreach($bridges as $bridgeReference => $bridgeInformations)
+		$bridgeList = Bridge::listBridges();
+	    foreach($bridgeList as $bridgeName)
 	    {
-			if(BridgeWhitelist($whitelist_selection, $bridgeReference))
+			if(Bridge::isWhitelisted($whitelist_selection, $bridgeName))
 			{
-				echo displayBridgeCard($bridgeReference, $bridgeInformations, $formats);
-	            $activeFoundBridgeCount++;
+				echo HTMLUtils::displayBridgeCard($bridgeName, $formats);
+	            		$activeFoundBridgeCount++;
 			}
 			elseif ($showInactive)
 			{
 				// inactive bridges
-				$inactiveBridges .= displayBridgeCard($bridgeReference, $bridgeInformations, $formats, false) . PHP_EOL;
+				$inactiveBridges .= HTMLUtils::displayBridgeCard($bridgeName, $formats, false) . PHP_EOL;
 			}
 		}
 		echo '<hr />' . $inactiveBridges;
 	?>
     <footer>
-		<?= $activeFoundBridgeCount; ?>/<?= count($bridges) ?> active bridges (<a href="?show_inactive=1">Show inactive</a>)<br />
-        <a href="https://github.com/sebsauvage/rss-bridge">RSS-Bridge alpha 0.1 ~ Public Domain</a>
-    </footer>  
+		<?= $activeFoundBridgeCount; ?>/<?= count($bridgeList) ?> active bridges (<a href="?show_inactive=1">Show inactive</a>)<br />
+        <a href="https://github.com/sebsauvage/rss-bridge">RSS-Bridge alpha 0.2 ~ Public Domain</a>
+    </footer>
     </body>
 </html>

@@ -1,33 +1,32 @@
 <?php
-/**
- * T411Bridge
- * Returns 5 newest torrents with specified search criteria
- *
- * @name T411
- * @homepage https://t411.in/
- * @description Returns the 5 newest torrents with specified search terms <br /> Use url part after '?' mark when using their search engine
- * @maintainer ORelio
- * @update 2015-10-22
- * @use1(search="search criteria")
- */
 class T411Bridge extends BridgeAbstract {
+
+    public function loadMetadatas() {
+
+        $this->maintainer = "ORelio";
+        $this->name = "T411";
+        $this->uri = "https://t411.in/";
+        $this->description = "Returns the 5 newest torrents with specified search terms <br /> Use url part after '?' mark when using their search engine";
+        $this->update = "2016-02-06";
+
+        $this->parameters[] =
+        '[
+            {
+                "name" : "Search criteria",
+                "identifier" : "search"
+            }
+        ]';
+    }
 
     public function collectData(array $param) {
 
-        //Utility function for extracting CDATA fields
-        function StripCDATA($string) {
-            $string = str_replace('<![CDATA[', '', $string);
-            $string = str_replace(']]>', '', $string);
-            return $string;
-        }
-
-        //Utility function for removing text based on specified delimiters
-        function StripWithDelimiters($string, $start, $end) {
-            while (strpos($string, $start) !== false) {
-                $section_to_remove = substr($string, strpos($string, $start));
-                $section_to_remove = substr($section_to_remove, 0, strpos($section_to_remove, $end) + strlen($end));
-                $string = str_replace($section_to_remove, '', $string);
-            } return $string;
+        //Utility function for retrieving text based on start and end delimiters
+        function ExtractFromDelimiters($string, $start, $end) {
+            if (strpos($string, $start) !== false) {
+                $section_retrieved = substr($string, strpos($string, $start) + strlen($start));
+                $section_retrieved = substr($section_retrieved, 0, strpos($section_retrieved, $end));
+                return $section_retrieved;
+            } return false;
         }
 
         //Ensure proper parameters have been provided
@@ -36,23 +35,26 @@ class T411Bridge extends BridgeAbstract {
         }
 
         //Retrieve torrent listing as truncated rss, which does not contain torrent description
-        $url = 'http://www.t411.in/torrents/rss/?'.$param['search'].'&order=added&type=desc';
+        $url = 'http://www.t411.in/torrents/search/?'.$param['search'].'&order=added&type=desc';
         $html = file_get_html($url) or $this->returnError('Could not request t411: '.$url, 500);
+        $results = $html->find('table.results', 0);
+        if (is_null($results))
+            $this->returnError('No results from t411: '.$url, 500);
         $limit = 0;
 
         //Process each item individually
-        foreach($html->find('item') as $element) {
+        foreach($results->find('tr') as $element) {
 
             //Limit total amount of requests
-            if ($limit < 5) {
+            if ($limit < 10) {
 
                 //Requests are rate-limited
-                sleep(1); //So we need to wait
+                usleep(500000); //So we need to wait (500ms)
 
                 //Retrieve data from RSS entry
-                $item_uri = StripCDATA($element->find('guid', 0)->plaintext);
-                $item_title = StripWithDelimiters(StripCDATA($element->find('title', 0)->innertext), ' (S:', ')');
-                $item_date = strtotime($element->find('pubDate', 0)->plaintext);
+                $item_uri = 'http://'.ExtractFromDelimiters($element->outertext, '<a href="//', '"');
+                $item_title = ExtractFromDelimiters($element->outertext, '" title="', '"');
+                $item_date = strtotime($element->find('dd', 0)->plaintext);
 
                 //Retrieve full description from torrent page
                 if ($item_html = file_get_html($item_uri)) {
@@ -64,7 +66,7 @@ class T411Bridge extends BridgeAbstract {
                     //Retrieve image for thumbnail or generic logo fallback
                     $item_image = 'http://www.t411.in/themes/blue/images/logo.png';
                     foreach ($item_desc->find('img') as $img) {
-                        if (strpos($img->src, 'dreamprez') === false) {
+                        if (strpos($img->src, 'prez') === false) {
                             $item_image = $img->src;
                             break;
                         }
@@ -77,7 +79,7 @@ class T411Bridge extends BridgeAbstract {
                     $item->author = $item_author;
                     $item->timestamp = $item_date;
                     $item->thumbnailUri = $item_image;
-                    $item->content = utf8_encode($item_desc->innertext);
+                    $item->content = $item_desc->innertext;
                     $this->items[] = $item;
                     $limit++;
                 }
@@ -94,7 +96,7 @@ class T411Bridge extends BridgeAbstract {
     }
 
     public function getCacheDuration() {
-        return 3600*3; // 3 hours
+        return 3600; // 1 hour
     }
 
 }

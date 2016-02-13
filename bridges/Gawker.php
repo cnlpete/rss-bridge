@@ -1,16 +1,27 @@
 <?php
-/**
-*
-* @name Gawker media
-* @description A bridge allowing access to any of the numerous Gawker media blogs (Lifehacker, deadspin, Kotaku, Jezebel, and so on. Notice you have to give its id to find the RSS stream in gawker maze
-* @update 27/03/2014
-* @use1(site="site id to put in uri between feeds.gawker.com and /full .. which is obviously not full AT ALL")
-*/
-require_once 'bridges/RssExpander.php';
 define("RSS_PREFIX", "http://feeds.gawker.com/");
 define("RSS_SUFFIX", "/full");
+
 class Gawker extends RssExpander{
-    
+
+    public function loadMetadatas() {
+
+		$this->maintainer = "mitsukarenai";
+		$this->name = "Gawker media";
+		$this->uri = "http://feeds.gawker.com/";
+		$this->description = "A bridge allowing access to any of the numerous Gawker media blogs (Lifehacker, deadspin, Kotaku, Jezebel, and so on. Notice you have to give its id to find the RSS stream in gawker maze";
+		$this->update = "27/03/2014";
+
+		$this->parameters[] =
+		'[
+			{
+				"name" : "site id to put in uri between feeds.gawker.com and /full .. which is obviously not full AT ALL",
+				"identifier" : "site"
+			}
+		]';
+	}
+
+
     private function toURI($name) {
         return RSS_PREFIX.$name.RSS_SUFFIX;
     }
@@ -20,10 +31,10 @@ class Gawker extends RssExpander{
 			trigger_error("If no site is provided, nothing is gonna happen", E_USER_ERROR);
         } else {
             $this->name = $param['site'];
-			$param['url'] = $this->toURI(strtolower($param['site']));
+			$url = $this->toURI(strtolower($param['site']));
         }
 //        $this->message("loading feed from ".$this->getURI());
-        parent::collectData($param);
+        parent::collectExpandableDatas($param, $url);
     }
     
     protected function parseRSSItem($newsItem) {
@@ -38,7 +49,7 @@ class Gawker extends RssExpander{
             $articlePage = str_get_html($this->get_cached($item->uri));
             if(is_object($articlePage)) {
                 $content = $articlePage->find('.post-content', 0);
-                $this->defaultImageSrcTo($content, $this->getURI());
+                HTMLSanitizer::defaultImageSrcTo($content, $this->getURI());
                 $vcard = $articlePage->find('.vcard', 0);
                 if(is_object($vcard)) {
                     $authorLink = $vcard->find('a', 0);
